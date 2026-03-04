@@ -1,6 +1,7 @@
 {
   "name": "vtimestamp-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
+  "mcpName": "io.github.vdappdev2/vtimestamp",
   "description": "MCP server for verifying and querying vtimestamp proofs on the Verus blockchain",
   "type": "module",
   "bin": {
