@@ -4,12 +4,18 @@
  * Registers vtimestamp_verify, vtimestamp_list, and vtimestamp_info tools.
  */
 
+import { createHash } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import type { Network } from './types.js';
-import { getVdxfKeys, findTimestampByHash, parseAllTimestamps, isValidSha256, isValidIdentity } from './vdxf.js';
+import { getVdxfKeys, findTimestampByHash, parseAllTimestamps, isValidIdentity } from './vdxf.js';
 import { getIdentityHistory, getBlock, VerusRpcError, RPC_ERROR_CODES } from './verus-rpc.js';
+
+function sha256(data: Buffer | string): string {
+  return createHash('sha256').update(data).digest('hex');
+}
 
 export function registerTools(server: McpServer): void {
   // ==========================================================================
@@ -18,13 +24,14 @@ export function registerTools(server: McpServer): void {
 
   server.tool(
     'vtimestamp_verify',
-    'Verify whether a document hash has been timestamped on a VerusID. Returns blockchain proof details if found.',
+    'Verify whether a file or text has been timestamped on a VerusID. Provide either a file_path or text — the server computes the SHA-256 hash and checks it against the on-chain record. Returns blockchain proof details if found.',
     {
       identity: z.string().describe('VerusID name (e.g., "alice@")'),
-      hash: z.string().describe('SHA-256 hash of the document (64-character hex string)'),
+      file_path: z.string().optional().describe('Path to a file to verify. Mutually exclusive with text.'),
+      text: z.string().optional().describe('Text string to verify. Mutually exclusive with file_path.'),
       network: z.enum(['mainnet', 'testnet']).default('mainnet').describe('Verus network to query'),
     },
-    async ({ identity, hash, network }) => {
+    async ({ identity, file_path, text, network }) => {
       if (!isValidIdentity(identity)) {
         throw new McpError(
           ErrorCode.InvalidParams,
@@ -32,11 +39,34 @@ export function registerTools(server: McpServer): void {
         );
       }
 
-      if (!isValidSha256(hash)) {
+      // Validate exactly one input mode
+      if (!file_path && !text) {
         throw new McpError(
           ErrorCode.InvalidParams,
-          'Invalid hash format — must be a 64-character hex string'
+          'Must provide either file_path or text'
         );
+      }
+      if (file_path && text) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          'Only one of file_path or text may be provided — they are mutually exclusive'
+        );
+      }
+
+      // Resolve hash from the provided input
+      let hash: string;
+      if (file_path) {
+        try {
+          const fileBuffer = await readFile(file_path);
+          hash = sha256(fileBuffer);
+        } catch (err) {
+          throw new McpError(
+            ErrorCode.InvalidParams,
+            `Failed to read file: ${err instanceof Error ? err.message : 'Unknown error'}`
+          );
+        }
+      } else {
+        hash = sha256(text!);
       }
 
       try {

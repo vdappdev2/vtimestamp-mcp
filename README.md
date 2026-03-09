@@ -68,15 +68,20 @@ Add to your VS Code MCP settings:
 
 ### `vtimestamp_verify`
 
-Verify whether a document hash has been timestamped on a VerusID.
+Verify whether a file or text has been timestamped on a VerusID. Provide either a file path or text — the server computes the SHA-256 hash and checks it against the on-chain record.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `identity` | string | Yes | VerusID name (e.g., `alice@`) |
-| `hash` | string | Yes | SHA-256 hash (64-character hex string) |
+| `file_path` | string | One of | Path to a file to verify |
+| `text` | string | One of | Text string to verify |
 | `network` | string | No | `mainnet` (default) or `testnet` |
 
-**Example:** "Can you check if my document has been timestamped? My VerusID is alice@ and the hash is a7f3b2c1..."
+Either `file_path` or `text` must be provided (mutually exclusive).
+
+**Example prompts:**
+- "Check if the file at /path/to/report.pdf has been timestamped on alice@"
+- "Verify this text was timestamped on bob@: I attest that invoice #4521 was approved"
 
 ### `vtimestamp_list`
 
