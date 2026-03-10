@@ -9,7 +9,6 @@ import { readFile } from 'node:fs/promises';
 import { z } from 'zod';
 import { McpError, ErrorCode } from '@modelcontextprotocol/sdk/types.js';
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import type { Network } from './types.js';
 import { getVdxfKeys, findTimestampByHash, parseAllTimestamps, isValidIdentity } from './vdxf.js';
 import { getIdentityHistory, getBlock, VerusRpcError, RPC_ERROR_CODES } from './verus-rpc.js';
 
@@ -29,9 +28,8 @@ export function registerTools(server: McpServer): void {
       identity: z.string().describe('VerusID name (e.g., "alice@")'),
       file_path: z.string().optional().describe('Path to a file to verify. Mutually exclusive with text.'),
       text: z.string().optional().describe('Text string to verify. Mutually exclusive with file_path.'),
-      network: z.enum(['mainnet', 'testnet']).default('mainnet').describe('Verus network to query'),
     },
-    async ({ identity, file_path, text, network }) => {
+    async ({ identity, file_path, text }) => {
       if (!isValidIdentity(identity)) {
         throw new McpError(
           ErrorCode.InvalidParams,
@@ -70,8 +68,8 @@ export function registerTools(server: McpServer): void {
       }
 
       try {
-        const keys = getVdxfKeys(network as Network);
-        const historyResponse = await getIdentityHistory(identity, network as Network);
+        const keys = getVdxfKeys();
+        const historyResponse = await getIdentityHistory(identity);
         const timestamp = findTimestampByHash(historyResponse.history, hash, keys);
 
         if (!timestamp) {
@@ -96,7 +94,7 @@ export function registerTools(server: McpServer): void {
 
         let blocktime: number | undefined;
         try {
-          const block = await getBlock(timestamp.blockhash, network as Network);
+          const block = await getBlock(timestamp.blockhash);
           blocktime = block.time;
         } catch {
           // Block time is optional
@@ -135,7 +133,7 @@ export function registerTools(server: McpServer): void {
               {
                 type: 'text' as const,
                 text: JSON.stringify({
-                  error: `Identity '${identity}' not found on ${network}`,
+                  error: `Identity '${identity}' not found`,
                 }),
               },
             ],
@@ -169,9 +167,8 @@ export function registerTools(server: McpServer): void {
     'List all timestamps recorded on a VerusID. Returns an array of timestamps with hash, title, metadata, and blockchain proof details.',
     {
       identity: z.string().describe('VerusID name (e.g., "alice@")'),
-      network: z.enum(['mainnet', 'testnet']).default('mainnet').describe('Verus network to query'),
     },
-    async ({ identity, network }) => {
+    async ({ identity }) => {
       if (!isValidIdentity(identity)) {
         throw new McpError(
           ErrorCode.InvalidParams,
@@ -180,8 +177,8 @@ export function registerTools(server: McpServer): void {
       }
 
       try {
-        const keys = getVdxfKeys(network as Network);
-        const historyResponse = await getIdentityHistory(identity, network as Network);
+        const keys = getVdxfKeys();
+        const historyResponse = await getIdentityHistory(identity);
         const timestamps = parseAllTimestamps(historyResponse.history, keys);
 
         // Fetch block times for all timestamps
@@ -189,7 +186,7 @@ export function registerTools(server: McpServer): void {
           timestamps.map(async (ts) => {
             let blocktime: number | undefined;
             try {
-              const block = await getBlock(ts.blockhash, network as Network);
+              const block = await getBlock(ts.blockhash);
               blocktime = block.time;
             } catch {
               // Block time is optional
@@ -233,7 +230,7 @@ export function registerTools(server: McpServer): void {
               {
                 type: 'text' as const,
                 text: JSON.stringify({
-                  error: `Identity '${identity}' not found on ${network}`,
+                  error: `Identity '${identity}' not found`,
                 }),
               },
             ],
@@ -285,7 +282,6 @@ export function registerTools(server: McpServer): void {
                   'Identity-bound: proof answers both \'when\' and \'who\'',
                   'Immutable: blockchain timestamp cannot be changed or backdated',
                 ],
-                supported_networks: ['mainnet', 'testnet'],
               },
               null,
               2

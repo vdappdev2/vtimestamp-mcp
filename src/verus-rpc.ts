@@ -5,21 +5,15 @@
  * Adapted from vtimestamp/src/lib/server/verus.ts
  */
 
-import type { Network, IdentityHistoryResponse, BlockData } from './types.js';
+import type { IdentityHistoryResponse, BlockData } from './types.js';
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
 const RPC_ENDPOINTS = {
-  mainnet: {
-    primary: 'https://api.verus.services',
-    fallback: 'https://rpc.vrsc.syncproof.net',
-  },
-  testnet: {
-    primary: 'https://api.verustest.net',
-    fallback: null,
-  },
+  primary: 'https://api.verus.services',
+  fallback: 'https://rpc.vrsc.syncproof.net',
 } as const;
 
 const RPC_TIMEOUT = 30_000;
@@ -93,22 +87,16 @@ async function rpcCallToEndpoint<T>(
  * RPC errors (like identity not found) are NOT retried on fallback.
  */
 async function rpcCall<T>(
-  network: Network,
   method: string,
   params: unknown[] = []
 ): Promise<T> {
-  const endpoints = RPC_ENDPOINTS[network];
-
   try {
-    return await rpcCallToEndpoint<T>(endpoints.primary, method, params);
+    return await rpcCallToEndpoint<T>(RPC_ENDPOINTS.primary, method, params);
   } catch (error) {
     if (error instanceof VerusRpcError) {
       throw error;
     }
-    if (!endpoints.fallback) {
-      throw error;
-    }
-    return await rpcCallToEndpoint<T>(endpoints.fallback, method, params);
+    return await rpcCallToEndpoint<T>(RPC_ENDPOINTS.fallback, method, params);
   }
 }
 
@@ -117,15 +105,13 @@ async function rpcCall<T>(
 // ============================================================================
 
 export async function getIdentityHistory(
-  identity: string,
-  network: Network
+  identity: string
 ): Promise<IdentityHistoryResponse> {
-  return rpcCall<IdentityHistoryResponse>(network, 'getidentityhistory', [identity]);
+  return rpcCall<IdentityHistoryResponse>('getidentityhistory', [identity]);
 }
 
 export async function getBlock(
-  blockhash: string,
-  network: Network
+  blockhash: string
 ): Promise<BlockData> {
-  return rpcCall<BlockData>(network, 'getblock', [blockhash]);
+  return rpcCall<BlockData>('getblock', [blockhash]);
 }

@@ -75,7 +75,6 @@ Verify whether a file or text has been timestamped on a VerusID. Provide either 
 | `identity` | string | Yes | VerusID name (e.g., `alice@`) |
 | `file_path` | string | One of | Path to a file to verify |
 | `text` | string | One of | Text string to verify |
-| `network` | string | No | `mainnet` (default) or `testnet` |
 
 Either `file_path` or `text` must be provided (mutually exclusive).
 
@@ -90,7 +89,6 @@ List all timestamps recorded on a VerusID.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `identity` | string | Yes | VerusID name (e.g., `alice@`) |
-| `network` | string | No | `mainnet` (default) or `testnet` |
 
 **Example:** "What documents has alice@ timestamped?"
 
@@ -113,9 +111,7 @@ AI Agent (Claude Desktop, VS Code, etc.)
 vtimestamp-mcp (local)
     │ HTTPS (JSON-RPC 1.0)
     ▼
-Verus Public RPC
-    ├── mainnet: api.verus.services
-    └── testnet: api.verustest.net
+Verus Public RPC (api.verus.services)
 ```
 
 ## Requirements

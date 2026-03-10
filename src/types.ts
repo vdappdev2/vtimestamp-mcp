@@ -72,5 +72,3 @@ export interface TimestampRecord {
   blocktime?: number;
   txid: string;
 }
-
-export type Network = 'mainnet' | 'testnet';

@@ -5,7 +5,6 @@
  */
 
 import type {
-  Network,
   DataDescriptor,
   DataDescriptorWrapper,
   IdentityHistoryEntry,
@@ -17,7 +16,6 @@ import type {
 // VDXF Key Constants
 // ============================================================================
 
-/** DataDescriptor wrapper key (same for testnet and mainnet) */
 const DATA_DESCRIPTOR_KEY = 'i4GC1YGEVD21afWudGoFJVdnfjJ5XWnCQv';
 
 interface VdxfKeys {
@@ -32,18 +30,6 @@ interface VdxfKeys {
   };
 }
 
-const TESTNET_VDXF: VdxfKeys = {
-  proofBasic: 'i6UD4js3jqyjz9Mttmbk2Sh4eCuwLKPLyQ',
-  dataDescriptor: DATA_DESCRIPTOR_KEY,
-  labels: {
-    sha256: 'iBCkvv7KC18xd3P164Cvw1pxpLo5FyGEtm',
-    title: 'iHXGu1nW4jQoeooBHPGE58qQGf9wMakEtj',
-    description: 'iP1PCTTHPpktP26xTEu1BuwENWMHQaia4D',
-    filename: 'i4xgBqX9btMX8tnAjsyVFrgSLnigxPwBw5',
-    filesize: 'iRz2tyZZEwmrxRPSrwN8UTAC8g5KyVkBiE',
-  },
-};
-
 const MAINNET_VDXF: VdxfKeys = {
   proofBasic: 'iJvkQ3uTKmRoFiE3rtP8YJxryLBKu8enmX',
   dataDescriptor: DATA_DESCRIPTOR_KEY,
@@ -56,8 +42,8 @@ const MAINNET_VDXF: VdxfKeys = {
   },
 };
 
-export function getVdxfKeys(network: Network): VdxfKeys {
-  return network === 'testnet' ? TESTNET_VDXF : MAINNET_VDXF;
+export function getVdxfKeys(): VdxfKeys {
+  return MAINNET_VDXF;
 }
 
 // ============================================================================
