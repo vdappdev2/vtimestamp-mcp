@@ -6,6 +6,12 @@ Enables AI agents (Claude Desktop, VS Code, etc.) to verify document timestamps 
 
 ## Installation
 
+### Claude Code
+
+```bash
+claude mcp add --transport stdio --scope user vtimestamp-read -- npx vtimestamp-mcp@latest
+```
+
 ### Claude Desktop
 
 Add to your `claude_desktop_config.json`:
@@ -15,7 +21,7 @@ Add to your `claude_desktop_config.json`:
   "mcpServers": {
     "vtimestamp": {
       "command": "npx",
-      "args": ["-y", "vtimestamp-mcp"]
+      "args": ["-y", "vtimestamp-mcp@latest"]
     }
   }
 }
@@ -57,7 +63,7 @@ Add to your VS Code MCP settings:
     "servers": {
       "vtimestamp": {
         "command": "npx",
-        "args": ["-y", "vtimestamp-mcp"]
+        "args": ["-y", "vtimestamp-mcp@latest"]
       }
     }
   }
