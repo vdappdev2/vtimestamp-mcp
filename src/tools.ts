@@ -70,7 +70,7 @@ export function registerTools(server: McpServer): void {
       try {
         const keys = getVdxfKeys();
         const historyResponse = await getIdentityHistory(identity);
-        const timestamp = findTimestampByHash(historyResponse.history, hash, keys);
+        const timestamp = await findTimestampByHash(historyResponse.history, hash, keys);
 
         if (!timestamp) {
           return {
@@ -179,7 +179,7 @@ export function registerTools(server: McpServer): void {
       try {
         const keys = getVdxfKeys();
         const historyResponse = await getIdentityHistory(identity);
-        const timestamps = parseAllTimestamps(historyResponse.history, keys);
+        const timestamps = await parseAllTimestamps(historyResponse.history, keys);
 
         // Fetch block times for all timestamps
         const results = await Promise.all(

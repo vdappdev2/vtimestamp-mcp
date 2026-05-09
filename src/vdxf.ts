@@ -1,7 +1,9 @@
 /**
  * VDXF Key Constants and Parsing Helpers
  *
- * Adapted from vtimestamp/src/lib/config.ts and vtimestamp/src/lib/vdxf.ts
+ * Branches on inner DataDescriptor flags to handle both legacy plaintext
+ * (flags:0) and public-encrypted (flags:13) entries under proof.basic. See
+ * workspace-root transition_plan.md.
  */
 
 import type {
@@ -11,6 +13,7 @@ import type {
   TimestampData,
   TimestampRecord,
 } from './types.js';
+import { decryptData } from './verus-rpc.js';
 
 // ============================================================================
 // VDXF Key Constants
@@ -21,6 +24,9 @@ const DATA_DESCRIPTOR_KEY = 'i4GC1YGEVD21afWudGoFJVdnfjJ5XWnCQv';
 interface VdxfKeys {
   proofBasic: string;
   dataDescriptor: string;
+  // Legacy label keys — used to parse plaintext (flags:0) entries written
+  // before the encrypted-cmm transition. Encrypted entries carry no per-leaf
+  // labels (envelope path rejects vdxfkeys/vdxfkeynames).
   labels: {
     sha256: string;
     title: string;
@@ -47,15 +53,30 @@ export function getVdxfKeys(): VdxfKeys {
 }
 
 // ============================================================================
-// Parsing Helpers
+// Flag bits on the inner DataDescriptor
 // ============================================================================
 
-/** VDXF flag indicating a deleted/cleared entry */
+const FLAG_ENCRYPTED = 1;
+const FLAG_HAS_IVK = 8;
 const FLAG_DELETED = 32;
+
+function isPublicEncrypted(descriptor: DataDescriptor): boolean {
+  return (descriptor.flags & FLAG_ENCRYPTED) !== 0
+    && (descriptor.flags & FLAG_HAS_IVK) !== 0;
+}
+
+function isPrivateEncrypted(descriptor: DataDescriptor): boolean {
+  return (descriptor.flags & FLAG_ENCRYPTED) !== 0
+    && (descriptor.flags & FLAG_HAS_IVK) === 0;
+}
 
 function isDeleted(descriptor: DataDescriptor): boolean {
   return descriptor.objectdata === null || descriptor.flags === FLAG_DELETED;
 }
+
+// ============================================================================
+// Legacy plaintext parsing (non-encrypted entries — typically flags:96)
+// ============================================================================
 
 function extractStringValue(descriptor: DataDescriptor): string | undefined {
   if (descriptor.objectdata === null) return undefined;
@@ -70,7 +91,7 @@ function extractNumberValue(descriptor: DataDescriptor): number | undefined {
     return descriptor.objectdata;
   }
   if (typeof descriptor.objectdata === 'object' && descriptor.objectdata !== null) {
-    const msg = descriptor.objectdata.message;
+    const msg = (descriptor.objectdata as { message: string }).message;
     if (typeof msg === 'string') {
       const num = parseInt(msg, 10);
       if (!isNaN(num)) return num;
@@ -80,9 +101,13 @@ function extractNumberValue(descriptor: DataDescriptor): number | undefined {
 }
 
 /**
- * Parse timestamp data from a contentmultimap entry
+ * Parse a legacy plaintext timestamp entry. Each field lives in its own
+ * DataDescriptor wrapper, distinguished by `label` (a VDXF i-address). The
+ * legacy writer sets both `label` and `mimetype`, so on-chain flags are
+ * typically 96 (LABEL_PRESENT|MIME_TYPE_PRESENT) — not 0. Accept any
+ * non-encrypted descriptor; encrypted entries take a different path.
  */
-export function parseTimestampData(
+function parseLegacyPlaintextEntries(
   entries: DataDescriptorWrapper[],
   keys: VdxfKeys
 ): TimestampData | null {
@@ -91,6 +116,7 @@ export function parseTimestampData(
   for (const wrapper of entries) {
     const descriptor = wrapper[keys.dataDescriptor];
     if (!descriptor || isDeleted(descriptor)) continue;
+    if ((descriptor.flags & FLAG_ENCRYPTED) !== 0) continue;
 
     const label = descriptor.label;
     if (!label) continue;
@@ -108,69 +134,147 @@ export function parseTimestampData(
     }
   }
 
-  if (!data.sha256 || !data.title) {
-    return null;
-  }
-
+  if (!data.sha256 || !data.title) return null;
   return data as TimestampData;
 }
 
+// ============================================================================
+// Encrypted parsing (flags:13 entries)
+// ============================================================================
+
+/** Cache decryptdata results — daemon round-trip is the dominant cost on bulk reads. */
+const decryptCache = new Map<string, TimestampData | null>();
+
+function cacheKeyFor(descriptor: DataDescriptor, txid: string): string {
+  const od = typeof descriptor.objectdata === 'string'
+    ? descriptor.objectdata
+    : JSON.stringify(descriptor.objectdata);
+  return `${txid}|${od}`;
+}
+
+async function decryptEnvelopeEntry(
+  descriptor: DataDescriptor,
+  txid: string
+): Promise<TimestampData | null> {
+  const cacheKey = cacheKeyFor(descriptor, txid);
+  const cached = decryptCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+
+  let parsed: TimestampData | null = null;
+  try {
+    const decrypted = await decryptData(descriptor, txid);
+    if (decrypted.length > 0) {
+      const hex = decrypted[0].objectdata;
+      const json = Buffer.from(hex, 'hex').toString('utf8');
+      const payload = JSON.parse(json) as Partial<TimestampData>;
+      if (payload.sha256 && payload.title) {
+        parsed = {
+          sha256: payload.sha256,
+          title: payload.title,
+          description: payload.description,
+          filename: payload.filename,
+          filesize: payload.filesize,
+        };
+      }
+    }
+  } catch {
+    // Decryption failure: surface as null. The entry is encrypted but we
+    // either lack keys (private-mode) or hit a transient daemon error.
+    parsed = null;
+  }
+
+  decryptCache.set(cacheKey, parsed);
+  return parsed;
+}
+
+// ============================================================================
+// Unified read path — handles legacy + encrypted entries under proof.basic
+// ============================================================================
+
 /**
- * Parse a single history entry into a TimestampRecord
+ * Parse a single history entry into a TimestampRecord. Branches on the inner
+ * DataDescriptor's flags: 0 = legacy plaintext, 13 = public-encrypted.
  */
-export function parseHistoryEntry(
+export async function parseHistoryEntry(
   entry: IdentityHistoryEntry,
   keys: VdxfKeys
-): TimestampRecord | null {
+): Promise<TimestampRecord | null> {
   const contentmultimap = entry.identity.contentmultimap;
   if (!contentmultimap) return null;
 
   const entries = contentmultimap[keys.proofBasic];
   if (!entries || entries.length === 0) return null;
 
-  const data = parseTimestampData(entries, keys);
-  if (!data) return null;
+  const txid = entry.output.txid;
 
-  return {
-    data,
-    blockhash: entry.blockhash,
-    blockheight: entry.height,
-    txid: entry.output.txid,
-  };
+  for (const wrapper of entries) {
+    const descriptor = wrapper[keys.dataDescriptor];
+    if (!descriptor || isDeleted(descriptor)) continue;
+
+    if (isPublicEncrypted(descriptor)) {
+      const data = await decryptEnvelopeEntry(descriptor, txid);
+      if (data) {
+        return {
+          data,
+          blockhash: entry.blockhash,
+          blockheight: entry.height,
+          txid,
+        };
+      }
+      continue;
+    }
+
+    if (isPrivateEncrypted(descriptor)) {
+      // Not produced by this app; we don't hold keys.
+      continue;
+    }
+
+    // Legacy plaintext path: parse the whole entry array as the old shape.
+    const data = parseLegacyPlaintextEntries(entries, keys);
+    if (data) {
+      return {
+        data,
+        blockhash: entry.blockhash,
+        blockheight: entry.height,
+        txid,
+      };
+    }
+    return null;
+  }
+
+  return null;
 }
 
 /**
- * Parse all timestamps from identity history
+ * Parse all timestamps from identity history. Decryption fans out across
+ * entries; results are sorted by descending block height.
  */
-export function parseAllTimestamps(
+export async function parseAllTimestamps(
   history: IdentityHistoryEntry[],
   keys: VdxfKeys
-): TimestampRecord[] {
-  const timestamps: TimestampRecord[] = [];
+): Promise<TimestampRecord[]> {
+  const records = await Promise.all(
+    history.map((entry) => parseHistoryEntry(entry, keys))
+  );
 
-  for (const entry of history) {
-    const record = parseHistoryEntry(entry, keys);
-    if (record) {
-      timestamps.push(record);
-    }
-  }
-
+  const timestamps = records.filter((r): r is TimestampRecord => r !== null);
   timestamps.sort((a, b) => b.blockheight - a.blockheight);
   return timestamps;
 }
 
 /**
- * Find a timestamp by its SHA-256 hash
+ * Find a timestamp by its SHA-256 hash. Sequential scan to short-circuit on
+ * first match — avoids decrypting every entry when an early one matches.
  */
-export function findTimestampByHash(
+export async function findTimestampByHash(
   history: IdentityHistoryEntry[],
   sha256: string,
   keys: VdxfKeys
-): TimestampRecord | null {
+): Promise<TimestampRecord | null> {
   const normalizedHash = sha256.toLowerCase();
 
   for (const entry of history) {
-    const record = parseHistoryEntry(entry, keys);
+    const record = await parseHistoryEntry(entry, keys);
     if (record && record.data.sha256.toLowerCase() === normalizedHash) {
       return record;
     }

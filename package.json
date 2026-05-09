@@ -1,11 +1,11 @@
 {
   "name": "vtimestamp-mcp",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "mcpName": "io.github.vdappdev2/vtimestamp",
   "description": "MCP server for verifying and querying vtimestamp proofs on the Verus blockchain",
   "type": "module",
   "bin": {
-    "vtimestamp-mcp": "./build/index.js"
+    "vtimestamp-mcp": "build/index.js"
   },
   "files": [
     "build"
@@ -27,7 +27,7 @@
   "homepage": "https://vtimestamp.com",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vdappdev2/vtimestamp-mcp.git"
+    "url": "git+https://github.com/vdappdev2/vtimestamp-mcp.git"
   },
   "bugs": {
     "url": "https://github.com/vdappdev2/vtimestamp-mcp/issues"
